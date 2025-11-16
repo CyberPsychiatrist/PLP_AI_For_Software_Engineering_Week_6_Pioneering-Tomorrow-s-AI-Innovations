@@ -95,42 +95,76 @@ with col2:
     
     if temp_image_path:
         try:
-            # Load the TensorFlow Lite model (placeholder - replace with actual model loading)
-            # interpreter = tf.lite.Interpreter(model_path="recyclable_items_model.tflite")
-            # interpreter.allocate_tensors()
-            
-            # Placeholder for model inference
-            st.info("🔄 Loading model and processing image...")
-            
-            # Simulate model prediction (replace with actual inference)
-            # This is a placeholder - implement actual TFLite inference here
-            with st.spinner("Classifying..."):
-                # Simulate processing time
-                import time
-                time.sleep(2)
+            # Load the TensorFlow Lite model
+            try:
+                interpreter = tf.lite.Interpreter(model_path="recyclable_items_model.tflite")
+                interpreter.allocate_tensors()
                 
-                # Mock results for demonstration
+                # Get input and output details
+                input_details = interpreter.get_input_details()
+                output_details = interpreter.get_output_details()
+                
+                # Load and preprocess image
+                image = cv2.imread(temp_image_path)
+                image = cv2.resize(image, (224, 224))  # Adjust size based on your model
+                image = image.astype(np.float32) / 255.0  # Normalize
+                image = np.expand_dims(image, axis=0)  # Add batch dimension
+                
+                # Set input tensor
+                interpreter.set_tensor(input_details[0]['index'], image)
+                
+                # Run inference
+                interpreter.invoke()
+                
+                # Get output tensor
+                predictions = interpreter.get_tensor(output_details[0]['index'])
+                
+                # Process predictions (adjust based on your model output)
+                if len(predictions.shape) > 1:
+                    predictions = predictions[0]  # Take first batch item
+                
+                # Create probability dictionary
+                class_names = ['Plastic Bottle', 'Aluminum Can', 'Paper', 'Glass']
+                prediction_dict = {}
+                for i, class_name in enumerate(class_names):
+                    prediction_dict[class_name] = float(predictions[i])
+                
+                # Normalize probabilities
+                total = sum(prediction_dict.values())
+                if total > 0:
+                    prediction_dict = {k: v/total for k, v in prediction_dict.items()}
+                
+            except Exception as e:
+                st.error(f"Error loading model or running inference: {str(e)}")
+                st.info("Make sure you have a trained TFLite model in the correct location.")
+                # Use mock predictions as fallback
                 predictions = {
                     'Plastic Bottle': 0.85,
                     'Aluminum Can': 0.10,
                     'Paper': 0.03,
                     'Glass': 0.02
                 }
-                
-                # Display results
-                st.markdown('<div class="result-card">', unsafe_allow_html=True)
-                st.subheader("🎯 Classification Results")
-                
-                # Display prediction probabilities
-                for item, confidence in predictions.items():
-                    st.write(f"**{item}**: {confidence:.1%}")
-                    st.progress(confidence)
-                
-                # Display the top prediction
-                top_prediction = max(predictions, key=predictions.get)
-                st.success(f"🏆 **Most Likely**: {top_prediction} ({predictions[top_prediction]:.1%})")
-                
-                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Show loading spinner
+            with st.spinner("🔄 Loading model and processing image..."):
+                # Small delay to show the spinner
+                import time
+                time.sleep(1)
+            
+            # Display results
+            st.markdown('<div class="result-card">', unsafe_allow_html=True)
+            st.subheader("🎯 Classification Results")
+            
+            # Display prediction probabilities
+            for item, confidence in predictions.items():
+                st.write(f"**{item}**: {confidence:.1%}")
+                st.progress(confidence)
+            
+            # Display the top prediction
+            top_prediction = max(predictions, key=predictions.get)
+            st.success(f"🏆 **Most Likely**: {top_prediction} ({predictions[top_prediction]:.1%})")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
                 
         except Exception as e:
             st.error(f"Error during classification: {str(e)}")

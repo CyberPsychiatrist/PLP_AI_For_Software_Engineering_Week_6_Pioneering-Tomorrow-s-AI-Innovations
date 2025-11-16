@@ -73,6 +73,15 @@ The web application provides:
 - Confidence score visualization
 - Model information display
 
+### 🌐 Live Demo
+
+You can access a live demo of the Edge AI prototype application:
+
+**Live Demo Link**: [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://plpaiforsoftwareengineeringweek6pioneering-tomorrow-s-ai-innov.streamlit.app/)
+
+
+## 🚀 Quick Start
+
 ## 📊 Task 1: Edge AI Prototype
 
 ### Jupyter Notebook: `notebooks/Task_1_Edge_AI_Prototype.ipynb`
