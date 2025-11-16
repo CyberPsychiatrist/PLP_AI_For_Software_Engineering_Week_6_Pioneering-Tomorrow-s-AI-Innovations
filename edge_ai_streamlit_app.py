@@ -1,10 +1,19 @@
 import streamlit as st
 import tensorflow as tf
 import numpy as np
-import cv2
 from PIL import Image
 import tempfile
 import os
+
+# Try to import OpenCV, but provide fallback if it fails
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+    st.sidebar.success("✅ OpenCV is available")
+except ImportError as e:
+    OPENCV_AVAILABLE = False
+    st.sidebar.warning(f"⚠️ OpenCV not available: {str(e)}")
+    st.sidebar.info("Using PIL-based image processing as fallback")
 
 # Page configuration
 st.set_page_config(
@@ -42,6 +51,39 @@ st.markdown("""
 # Title and description
 st.markdown('<div class="header"><h1>♻️ Edge AI Recyclable Items Classifier</h1></div>', unsafe_allow_html=True)
 st.markdown("---")
+
+# Helper function for image preprocessing
+def preprocess_image(image_path, target_size=(224, 224)):
+    """
+    Preprocess image for model inference.
+    Uses OpenCV if available, otherwise falls back to PIL.
+    """
+    try:
+        if OPENCV_AVAILABLE:
+            # OpenCV-based preprocessing
+            image = cv2.imread(image_path)
+            if image is None:
+                raise ValueError(f"Could not read image: {image_path}")
+            image = cv2.resize(image, target_size)
+            image = image.astype(np.float32) / 255.0
+        else:
+            # PIL-based preprocessing
+            with Image.open(image_path) as img:
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                # Resize
+                img = img.resize(target_size, Image.Resampling.LANCZOS)
+                # Convert to numpy array and normalize
+                image = np.array(img, dtype=np.float32) / 255.0
+        
+        # Add batch dimension
+        image = np.expand_dims(image, axis=0)
+        return image
+        
+    except Exception as e:
+        st.error(f"Error preprocessing image: {str(e)}")
+        return None
 
 # Sidebar - Model Information
 with st.sidebar:
@@ -104,41 +146,40 @@ with col2:
                 input_details = interpreter.get_input_details()
                 output_details = interpreter.get_output_details()
                 
-                # Load and preprocess image
-                image = cv2.imread(temp_image_path)
-                image = cv2.resize(image, (224, 224))  # Adjust size based on your model
-                image = image.astype(np.float32) / 255.0  # Normalize
-                image = np.expand_dims(image, axis=0)  # Add batch dimension
-                
-                # Set input tensor
-                interpreter.set_tensor(input_details[0]['index'], image)
-                
-                # Run inference
-                interpreter.invoke()
-                
-                # Get output tensor
-                predictions = interpreter.get_tensor(output_details[0]['index'])
-                
-                # Process predictions (adjust based on your model output)
-                if len(predictions.shape) > 1:
-                    predictions = predictions[0]  # Take first batch item
-                
-                # Create probability dictionary
-                class_names = ['Plastic Bottle', 'Aluminum Can', 'Paper', 'Glass']
-                prediction_dict = {}
-                for i, class_name in enumerate(class_names):
-                    prediction_dict[class_name] = float(predictions[i])
-                
-                # Normalize probabilities
-                total = sum(prediction_dict.values())
-                if total > 0:
-                    prediction_dict = {k: v/total for k, v in prediction_dict.items()}
+                # Preprocess image using helper function (works with OpenCV or PIL)
+                processed_image = preprocess_image(temp_image_path)
+                if processed_image is not None:
+                    # Set input tensor
+                    interpreter.set_tensor(input_details[0]['index'], processed_image)
+                    
+                    # Run inference
+                    interpreter.invoke()
+                    
+                    # Get output tensor
+                    predictions = interpreter.get_tensor(output_details[0]['index'])
+                    
+                    # Process predictions (adjust based on your model output)
+                    if len(predictions.shape) > 1:
+                        predictions = predictions[0]  # Take first batch item
+                    
+                    # Create probability dictionary
+                    class_names = ['Plastic Bottle', 'Aluminum Can', 'Paper', 'Glass']
+                    prediction_dict = {}
+                    for i, class_name in enumerate(class_names):
+                        prediction_dict[class_name] = float(predictions[i])
+                    
+                    # Normalize probabilities
+                    total = sum(prediction_dict.values())
+                    if total > 0:
+                        prediction_dict = {k: v/total for k, v in prediction_dict.items()}
+                else:
+                    raise ValueError("Image preprocessing failed")
                 
             except Exception as e:
                 st.error(f"Error loading model or running inference: {str(e)}")
                 st.info("Make sure you have a trained TFLite model in the correct location.")
                 # Use mock predictions as fallback
-                predictions = {
+                prediction_dict = {
                     'Plastic Bottle': 0.85,
                     'Aluminum Can': 0.10,
                     'Paper': 0.03,
@@ -156,13 +197,13 @@ with col2:
             st.subheader("🎯 Classification Results")
             
             # Display prediction probabilities
-            for item, confidence in predictions.items():
+            for item, confidence in prediction_dict.items():
                 st.write(f"**{item}**: {confidence:.1%}")
                 st.progress(confidence)
             
             # Display the top prediction
-            top_prediction = max(predictions, key=predictions.get)
-            st.success(f"🏆 **Most Likely**: {top_prediction} ({predictions[top_prediction]:.1%})")
+            top_prediction = max(prediction_dict, key=prediction_dict.get)
+            st.success(f"🏆 **Most Likely**: {top_prediction} ({prediction_dict[top_prediction]:.1%})")
             
             st.markdown('</div>', unsafe_allow_html=True)
                 
